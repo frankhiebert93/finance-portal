@@ -11,7 +11,7 @@ export default async function BusinessDashboard() {
         redirect('/')
     }
 
-    const ADMIN_EMAIL = 'countryfolk93@gmail.com'
+    const ADMIN_EMAIL = 'frankhiebert93@gmail.com'
     if (user.email !== ADMIN_EMAIL) {
         redirect('/dashboard/personal')
     }
@@ -20,8 +20,7 @@ export default async function BusinessDashboard() {
     let fetchError = null;
 
     // Uses Render URL if available, otherwise defaults to local PC
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-
+    const API_URL = 'https://finance-portal-i4so.onrender.com';
     try {
         const res = await fetch(`${API_URL}/api/business/financials`, {
             cache: 'no-store'
