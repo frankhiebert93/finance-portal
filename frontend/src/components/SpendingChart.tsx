@@ -26,7 +26,7 @@ export default function SpendingChart({ data }: { data: any[] }) {
                         ))}
                     </Pie>
                     <Tooltip
-                        formatter={(value: number) => `$${value.toFixed(2)}`}
+                        formatter={(value: any) => `$${Number(value || 0).toFixed(2)}`}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}
                     />
                     <Legend verticalAlign="bottom" height={36} iconType="circle" />
