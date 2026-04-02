@@ -1,88 +1,141 @@
 import { createClient } from '@/lib/supabase'
 import TransactionForm from '@/components/TransactionForm'
+import SpendingChart from '@/components/SpendingChart'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PersonalDashboard() {
     const supabase = await createClient()
 
+    // Fetch data
     const { data: categories } = await supabase.from('categories').select('*').eq('workspace', 'personal').order('name')
-    const { data: transactions } = await supabase.from('transactions').select(`id, amount, date, note, categories (name, type)`).eq('workspace', 'personal').order('date', { ascending: false }).limit(50)
+    const { data: transactions } = await supabase.from('transactions').select(`id, amount, date, note, categories (name, type)`).eq('workspace', 'personal').order('date', { ascending: false })
+    const { data: buckets } = await supabase.from('savings_buckets').select('*').eq('workspace', 'personal').order('created_at')
 
-    let totalIncome = 0; let totalExpenses = 0;
+    // Calculate High-Level Totals & Category Spending
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    const expenseTotals: Record<string, number> = {};
+
     if (transactions) {
         transactions.forEach((tx: any) => {
             const type = tx.categories?.type
-            if (type === 'income') totalIncome += Number(tx.amount)
-            if (type === 'expense') totalExpenses += Number(tx.amount)
+            const amount = Number(tx.amount)
+            const catName = tx.categories?.name || 'Uncategorized'
+
+            if (type === 'income') {
+                totalIncome += amount
+            } else if (type === 'expense') {
+                totalExpenses += amount
+                expenseTotals[catName] = (expenseTotals[catName] || 0) + amount;
+            }
         })
     }
 
+    // Format data for the Donut Chart
+    const chartData = Object.entries(expenseTotals)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+
+    // Format money helper
+    const fmt = (num: number) => Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     return (
-        <div className="bg-slate-100 font-sans min-h-screen">
+        <div className="bg-slate-100 font-sans min-h-screen pb-12">
             <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
 
-                {/* Header Area */}
                 <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-4 md:mt-0">
                     <div>
-                        <h1 className="text-3xl font-extrabold text-slate-900">Monthly Overview</h1>
-                        <p className="text-slate-500 font-medium mt-1">Household zero-based targets.</p>
+                        <h1 className="text-3xl font-extrabold text-slate-900">Household Ledger</h1>
+                        <p className="text-slate-500 font-medium mt-1">Zero-based wealth tracking.</p>
                     </div>
-                    <TransactionForm categories={categories || []} />
+                    <div className="flex gap-3 w-full md:w-auto">
+                        <div className="flex-1 md:flex-none">
+                            <TransactionForm categories={categories || []} />
+                        </div>
+                        <a href="/dashboard/settings" className="flex items-center justify-center bg-slate-100 text-slate-600 p-3 rounded-xl hover:bg-slate-200 transition border border-slate-200 shadow-sm">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </a>
+                    </div>
                 </header>
 
-                {/* Vibrant Metrics Boxes */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl shadow-lg border border-emerald-400 relative overflow-hidden">
-                        <svg className="absolute top-4 right-4 w-12 h-12 text-emerald-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                        <h3 className="text-sm font-bold text-emerald-100 uppercase tracking-wider">Total Income</h3>
-                        <p className="text-4xl font-black text-white mt-2">${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                {/* Top Level Metrics */}
+                <div className="grid grid-cols-3 gap-3 md:gap-6">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-emerald-500 text-center">
+                        <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Income</h3>
+                        <p className="text-xl md:text-3xl font-black text-slate-800 mt-1">${fmt(totalIncome)}</p>
                     </div>
-
-                    <div className="bg-gradient-to-br from-rose-500 to-rose-600 p-6 rounded-2xl shadow-lg border border-rose-400 relative overflow-hidden">
-                        <svg className="absolute top-4 right-4 w-12 h-12 text-rose-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
-                        <h3 className="text-sm font-bold text-rose-100 uppercase tracking-wider">Total Expenses</h3>
-                        <p className="text-4xl font-black text-white mt-2">${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-rose-500 text-center">
+                        <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Expenses</h3>
+                        <p className="text-xl md:text-3xl font-black text-slate-800 mt-1">${fmt(totalExpenses)}</p>
                     </div>
-
-                    <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-2xl shadow-lg border border-indigo-500 relative overflow-hidden">
-                        <svg className="absolute top-4 right-4 w-12 h-12 text-indigo-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
-                        <h3 className="text-sm font-bold text-indigo-200 uppercase tracking-wider">Left to Allocate</h3>
-                        <p className="text-4xl font-black text-white mt-2">${(totalIncome - totalExpenses).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-indigo-500 text-center bg-indigo-50">
+                        <h3 className="text-[10px] md:text-xs font-bold text-indigo-400 uppercase tracking-wider">Left to Allocate</h3>
+                        <p className="text-xl md:text-3xl font-black text-indigo-700 mt-1">${fmt(totalIncome - totalExpenses)}</p>
                     </div>
                 </div>
 
-                {/* Structured Ledger Table */}
-                <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-                        <h2 className="text-lg font-bold text-slate-800">Recent Transactions</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    {/* Visual Spending Chart */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4">Spending Breakdown</h2>
+                        <SpendingChart data={chartData} />
                     </div>
 
-                    <div className="divide-y divide-slate-100">
-                        {!transactions || transactions.length === 0 ? (
-                            <div className="p-12 text-center text-slate-400 font-medium">
-                                No transactions found. Log your first entry above.
-                            </div>
-                        ) : (
-                            transactions.map((tx: any) => (
-                                <div key={tx.id} className="flex justify-between items-center p-4 hover:bg-slate-50 transition">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${tx.categories?.type === 'expense' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                            {tx.categories?.type.substring(0, 3)}
+                    {/* Target Savings Buckets */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-lg font-bold text-slate-800">Savings Targets</h2>
+                            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full">Custom Buckets</span>
+                        </div>
+
+                        <div className="space-y-5">
+                            {buckets?.map((bucket: any) => {
+                                const percent = bucket.target_amount > 0 ? Math.min((bucket.current_amount / bucket.target_amount) * 100, 100) : 0;
+                                return (
+                                    <div key={bucket.id}>
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="font-bold text-slate-700">{bucket.name}</span>
+                                            <span className="font-bold text-slate-900">${fmt(bucket.current_amount)} <span className="text-slate-400 font-medium">/ ${fmt(bucket.target_amount)}</span></span>
                                         </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-slate-900 text-sm">{tx.categories?.name || 'Uncategorized'}</span>
-                                            <span className="text-xs text-slate-500 font-medium">{new Date(tx.date).toLocaleDateString()} {tx.note && <span className="text-slate-400 ml-1">• {tx.note}</span>}</span>
+                                        <div className="w-full bg-slate-100 rounded-full h-3">
+                                            <div className="bg-amber-500 h-3 rounded-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
                                         </div>
                                     </div>
-                                    <span className={`font-black text-md ${tx.categories?.type === 'expense' ? 'text-slate-800' : 'text-emerald-600'}`}>
-                                        {tx.categories?.type === 'expense' ? '-' : '+'}${Number(tx.amount).toFixed(2)}
-                                    </span>
-                                </div>
-                            ))
-                        )}
+                                )
+                            })}
+                        </div>
                     </div>
                 </div>
+
+                {/* Zero-Based Category Limits */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                    <h2 className="text-lg font-bold text-slate-800 mb-6">Monthly Category Limits</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                        {categories?.filter((c: any) => c.type === 'expense').map((category: any) => {
+                            const limit = Number(category.monthly_limit || 0);
+                            const spent = expenseTotals[category.name] || 0;
+                            const percent = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
+
+                            // Turn the bar red if they are over 90% of the budget
+                            const barColor = percent > 90 ? 'bg-rose-500' : 'bg-emerald-500';
+
+                            return (
+                                <div key={category.id}>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="font-bold text-slate-700">{category.name}</span>
+                                        <span className="font-bold text-slate-900">${fmt(spent)} <span className="text-slate-400 font-medium">/ ${fmt(limit)}</span></span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-2">
+                                        <div className={`${barColor} h-2 rounded-full transition-all duration-500`} style={{ width: `${percent}%` }}></div>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+
             </div>
         </div>
     )
