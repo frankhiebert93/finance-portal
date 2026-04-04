@@ -4,17 +4,16 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
+// HELPER FUNCTIONS MOVED HERE (Outside the main component!)
+const parseNum = (val: FormDataEntryValue | null) => Number(String(val).replace(/,/g, ''));
+const fmt = (num: any) => Number(num || 0).toLocaleString('en-US');
+
 export default async function SettingsPage() {
     const supabase = await createClient()
 
     const { data: categories } = await supabase.from('categories').select('*').eq('type', 'expense').order('name')
     const { data: buckets } = await supabase.from('savings_buckets').select('*').order('created_at')
     const { data: debts } = await supabase.from('debts').select('*').order('created_at')
-
-    // Helper to strip commas before saving to database
-    const parseNum = (val: FormDataEntryValue | null) => Number(String(val).replace(/,/g, ''));
-    // Helper to add commas for display
-    const fmt = (num: any) => Number(num || 0).toLocaleString('en-US');
 
     async function updateCategory(formData: FormData) {
         'use server'
@@ -70,7 +69,7 @@ export default async function SettingsPage() {
         const id = formData.get('id') as string
         const name = formData.get('name') as string
         await supabase.from('debts').update({
-            name, // Now updates the name!
+            name,
             current_balance: parseNum(formData.get('balance')),
             interest_rate: parseNum(formData.get('rate')),
             min_payment: parseNum(formData.get('payment'))
@@ -100,7 +99,6 @@ export default async function SettingsPage() {
                         <form key={debt.id} action={updateDebt} className="flex flex-col gap-3 border-b border-slate-100 pb-6 last:border-0 last:pb-0">
                             <input type="hidden" name="id" value={debt.id} />
 
-                            {/* Editable Debt Name */}
                             <div className="flex justify-between items-center mb-2 gap-3">
                                 <input type="text" name="name" defaultValue={debt.name} required className="font-bold text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:border-rose-500 outline-none w-full md:w-1/2 px-1 py-1 text-lg" />
                                 <button type="submit" className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-200 transition text-sm">Save</button>
@@ -143,9 +141,7 @@ export default async function SettingsPage() {
                     {categories?.map(cat => (
                         <form key={cat.id} action={updateCategory} className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4 last:border-0 last:pb-0">
                             <input type="hidden" name="id" value={cat.id} />
-
                             <input type="text" name="name" defaultValue={cat.name} required className="font-bold text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 outline-none w-full md:w-1/3 px-1 py-1" />
-
                             <div className="flex items-center gap-2 self-end md:self-auto">
                                 <span className="text-slate-400 font-bold">$</span>
                                 <input type="text" inputMode="decimal" name="limit" defaultValue={fmt(cat.monthly_limit)} className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold text-right focus:ring-2 focus:ring-indigo-500 outline-none" />
