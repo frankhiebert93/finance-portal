@@ -33,6 +33,48 @@ export default async function PersonalDashboard() {
         })
     }
 
+    // Calculate Aggregate Debt & Total Freedom Date
+    let totalDebt = 0;
+    let maxMonthsToPayoff = 0;
+    let willNeverPayOff = false;
+
+    if (debts) {
+        debts.forEach((debt: any) => {
+            const balance = Number(debt.current_balance || 0);
+            const apr = Number(debt.interest_rate || 0);
+            const payment = Number(debt.min_payment || 0);
+
+            totalDebt += balance;
+
+            if (balance > 0) {
+                const monthlyRate = (apr / 100) / 12;
+                const thisMonthInterest = balance * monthlyRate;
+
+                if (payment <= thisMonthInterest) {
+                    willNeverPayOff = true;
+                } else {
+                    // Logarithmic formula for standard amortization schedule
+                    const monthsToPayoff = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
+                    if (monthsToPayoff > maxMonthsToPayoff) {
+                        maxMonthsToPayoff = monthsToPayoff;
+                    }
+                }
+            }
+        });
+    }
+
+    let overallPayoffMessage = "";
+    if (totalDebt <= 0) {
+        overallPayoffMessage = "You are 100% Debt Free! 🎉";
+    } else if (willNeverPayOff) {
+        overallPayoffMessage = "Payments too low (Interest exceeds pay)";
+    } else {
+        const totalMonths = Math.ceil(maxMonthsToPayoff);
+        const d = new Date();
+        d.setMonth(d.getMonth() + totalMonths);
+        overallPayoffMessage = `${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+    }
+
     // Format data for the Donut Chart
     const chartData = Object.entries(expenseTotals)
         .map(([name, value]) => ({ name, value }))
@@ -115,12 +157,26 @@ export default async function PersonalDashboard() {
                     </div>
                 </div>
 
-                {/* Active Debt Tracker */}
+                {/* Active Debt Tracker with Overall Freedom Date Summary */}
                 <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 md:mb-8">
                         <h2 className="text-lg font-bold text-slate-800">Active Debt Tracker</h2>
                         <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto">Amortization Engine</span>
                     </div>
+
+                    {/* TOTAL DEBT & FREEDOM DATE SUMMARY BOX */}
+                    {totalDebt > 0 && (
+                        <div className="bg-slate-900 rounded-xl p-5 mb-8 text-white flex flex-col md:flex-row justify-between items-center gap-4 shadow-md">
+                            <div className="text-center md:text-left">
+                                <span className="block text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1">Total Household Debt</span>
+                                <span className="text-3xl md:text-4xl font-black text-rose-400">${fmt(totalDebt)}</span>
+                            </div>
+                            <div className="bg-slate-800 px-5 py-3 rounded-lg text-center md:text-right border border-slate-700 w-full md:w-auto">
+                                <span className="block text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1">Total Debt Freedom</span>
+                                <span className={`text-lg md:text-xl font-bold ${willNeverPayOff ? 'text-rose-400' : 'text-emerald-400'}`}>{overallPayoffMessage}</span>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {debts?.map((debt: any) => {
