@@ -9,7 +9,8 @@ export default function SpendingChart({ data }: { data: any[] }) {
     }
 
     return (
-        <div className="h-72 w-full">
+        // Increased the overall height and added bottom padding to contain the wrapping text
+        <div className="h-80 md:h-96 w-full pb-4">
             <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                     <Pie
@@ -26,10 +27,11 @@ export default function SpendingChart({ data }: { data: any[] }) {
                         ))}
                     </Pie>
                     <Tooltip
-                        formatter={(value: any) => `$${Number(value || 0).toFixed(2)}`}
+                        formatter={(value: any) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}
                     />
-                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                    {/* Removed the height restriction and added padding to push it down cleanly */}
+                    <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                 </PieChart>
             </ResponsiveContainer>
         </div>
