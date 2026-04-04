@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client' // Assuming you have a standard Supabase browser client
 import { useRouter } from 'next/navigation'
 import { scanReceiptAction } from '@/app/actions/scanReceipt'
+import { saveTransactionAction } from '@/app/actions/saveTransaction'
 
 export default function TransactionForm({ categories }: { categories: any[] }) {
     const router = useRouter()
-    const supabase = createClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const [isOpen, setIsOpen] = useState(false)
@@ -25,15 +24,13 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
         if (!file) return
 
         setIsScanning(true)
-        setIsOpen(true) // Open the modal so they can see the loading state
+        setIsOpen(true)
 
-        // Convert image to base64 for the AI
         const reader = new FileReader()
         reader.readAsDataURL(file)
         reader.onloadend = async () => {
             const base64Image = reader.result as string
 
-            // Send to our Server Action
             const result = await scanReceiptAction(base64Image, categories)
 
             if (result.success) {
@@ -47,30 +44,22 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
         }
     }
 
-    // Handle Final Save
+    // Handle Final Save via Server Action
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsSaving(true)
 
-        await supabase.from('transactions').insert({
-            amount: Number(amount),
-            date: new Date().toISOString().split('T')[0],
-            note,
-            category_id: categoryId,
-            workspace: 'personal'
-        })
+        await saveTransactionAction(Number(amount), note, categoryId)
 
         setAmount('')
         setNote('')
         setIsOpen(false)
         setIsSaving(false)
-        router.refresh() // Instantly updates the dashboard charts!
     }
 
     return (
         <>
             <div className="flex gap-2">
-                {/* Hidden Camera Input */}
                 <input
                     type="file"
                     accept="image/*"
@@ -80,7 +69,6 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
                     onChange={handleCapture}
                 />
 
-                {/* Camera Trigger Button */}
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     className="bg-indigo-100 text-indigo-700 p-3 rounded-xl hover:bg-indigo-200 transition shadow-sm font-bold flex items-center gap-2"
@@ -89,7 +77,6 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
                     Scan
                 </button>
 
-                {/* Manual Entry Button */}
                 <button
                     onClick={() => setIsOpen(true)}
                     className="bg-slate-900 text-white px-5 py-3 rounded-xl hover:bg-slate-800 transition shadow-sm font-bold flex-1 md:flex-none"
@@ -98,7 +85,6 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
                 </button>
             </div>
 
-            {/* Transaction Modal */}
             {isOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
