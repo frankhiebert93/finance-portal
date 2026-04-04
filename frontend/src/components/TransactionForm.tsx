@@ -12,12 +12,13 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
     const [note, setNote] = useState('')
     const [categoryId, setCategoryId] = useState(categories[0]?.id || '')
 
-    // Handle Final Save via Server Action
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsSaving(true)
 
-        await saveTransactionAction(Number(amount), note, categoryId)
+        // Strip out any commas the user typed before saving to the database
+        const cleanAmount = Number(amount.replace(/,/g, ''))
+        await saveTransactionAction(cleanAmount, note, categoryId)
 
         setAmount('')
         setNote('')
@@ -44,7 +45,8 @@ export default function TransactionForm({ categories }: { categories: any[] }) {
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount</label>
                                 <div className="flex items-center gap-2">
                                     <span className="text-slate-400 font-bold text-xl">$</span>
-                                    <input type="number" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-900 font-black text-2xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    {/* Changed type="number" to type="text" to allow commas */}
+                                    <input type="text" inputMode="decimal" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-900 font-black text-2xl focus:ring-2 focus:ring-indigo-500 outline-none" />
                                 </div>
                             </div>
 
