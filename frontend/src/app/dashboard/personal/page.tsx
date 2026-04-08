@@ -38,9 +38,18 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
 
     // 3. Calculate Carry Over Surplus
     let carryOverSurplus = 0
-    allPriorHistory?.forEach(tx => {
-        if (tx.categories?.type === 'income') carryOverSurplus += Number(tx.amount)
-        else carryOverSurplus -= Number(tx.amount)
+    allPriorHistory?.forEach((tx: any) => {
+        // Supabase joins can sometimes return the joined data as an array [ {type: 'income'} ]
+        // or a single object {type: 'income'}. This handles both:
+        const categoryData = Array.isArray(tx.categories) ? tx.categories[0] : tx.categories;
+        const type = categoryData?.type;
+        const amount = Number(tx.amount || 0);
+
+        if (type === 'income') {
+            carryOverSurplus += amount;
+        } else {
+            carryOverSurplus -= amount;
+        }
     })
 
     // 4. Calculate This Month's Math
