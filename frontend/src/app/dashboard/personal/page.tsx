@@ -10,7 +10,7 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
     const params = await searchParams
     const now = new Date()
 
-    // 1. Resolve selected month
+    // 1. Resolve selected month (default to current)
     const selectedMonth = params.month ? new Date(params.month + "-02") : now
     const year = selectedMonth.getFullYear()
     const month = selectedMonth.getMonth()
@@ -21,13 +21,11 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
     // 2. Fetch Data
     const { data: categories } = await supabase.from('categories').select('*').eq('workspace', 'personal').order('name')
 
-    // This Month's Transactions
     const { data: transactions } = await supabase.from('transactions')
         .select(`amount, date, categories (name, type)`)
         .eq('workspace', 'personal')
         .gte('date', firstDay).lte('date', lastDay)
 
-    // All history prior to this month (for carry-over)
     const { data: allPriorHistory } = await supabase.from('transactions')
         .select(`amount, categories (type)`)
         .eq('workspace', 'personal')
@@ -36,31 +34,27 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
     const { data: buckets } = await supabase.from('savings_buckets').select('*').eq('workspace', 'personal').order('created_at')
     const { data: debts } = await supabase.from('debts').select('*').eq('workspace', 'personal').order('created_at')
 
-    // 3. Calculate Carry Over Surplus
+    // 3. Calculate Carry Over Surplus (Vercel-Safe Type Checking)
     let carryOverSurplus = 0
     allPriorHistory?.forEach((tx: any) => {
-        // Supabase joins can sometimes return the joined data as an array [ {type: 'income'} ]
-        // or a single object {type: 'income'}. This handles both:
         const categoryData = Array.isArray(tx.categories) ? tx.categories[0] : tx.categories;
         const type = categoryData?.type;
         const amount = Number(tx.amount || 0);
-
-        if (type === 'income') {
-            carryOverSurplus += amount;
-        } else {
-            carryOverSurplus -= amount;
-        }
+        if (type === 'income') carryOverSurplus += amount;
+        else carryOverSurplus -= amount;
     })
 
-    // 4. Calculate This Month's Math
+    // 4. Calculate This Month's Metrics
     let thisMonthIncome = 0
     let thisMonthExpenses = 0
     const expenseTotals: Record<string, number> = {}
 
     transactions?.forEach((tx: any) => {
-        const amt = Number(tx.amount)
-        const catName = tx.categories?.name || 'Uncategorized'
-        if (tx.categories?.type === 'income') {
+        const categoryData = Array.isArray(tx.categories) ? tx.categories[0] : tx.categories;
+        const amt = Number(tx.amount || 0)
+        const catName = categoryData?.name || 'Uncategorized'
+
+        if (categoryData?.type === 'income') {
             thisMonthIncome += amt
         } else {
             thisMonthExpenses += amt
@@ -70,28 +64,10 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
 
     const remainingToAllocate = (carryOverSurplus + thisMonthIncome) - thisMonthExpenses
 
-    // 5. Debt Freedom Logic
-    let totalDebt = 0; let maxMonthsToPayoff = 0; let willNeverPayOff = false;
-    debts?.forEach((debt: any) => {
-        const balance = Number(debt.current_balance || 0);
-        const apr = Number(debt.interest_rate || 0);
-        const payment = Number(debt.min_payment || 0);
-        totalDebt += balance;
-        if (balance > 0) {
-            const monthlyRate = (apr / 100) / 12;
-            if (payment <= (balance * monthlyRate)) willNeverPayOff = true;
-            else {
-                const months = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-                if (months > maxMonthsToPayoff) maxMonthsToPayoff = months;
-            }
-        }
-    });
+    // 5. Global Debt Math
+    let totalDebtAmount = 0; let maxMonthsToPayoff = 0; let globalWillNeverPayOff = false;
 
-    const freedomDate = totalDebt > 0
-        ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(maxMonthsToPayoff)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-        : 'Debt Free! 🎉';
-
-    // Format Helpers
+    // 6. Format Helpers
     const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const chartData = Object.entries(expenseTotals).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
@@ -151,7 +127,7 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
                                             <span className="font-bold text-slate-900 text-xs">${fmt(bucket.current_amount)} / ${fmt(bucket.target_amount)}</span>
                                         </div>
                                         <div className="w-full bg-slate-100 rounded-full h-3 border border-slate-200 overflow-hidden">
-                                            <div className="bg-amber-500 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
+                                            <div className="bg-amber-500 h-full" style={{ width: `${percent}%` }} />
                                         </div>
                                     </div>
                                 )
@@ -160,37 +136,80 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
                     </div>
                 </div>
 
-                {/* Master Debt Box */}
-                <div className="bg-slate-900 p-6 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div>
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Household Debt</h3>
-                        <p className="text-4xl font-black text-rose-400">${fmt(totalDebt)}</p>
+                {/* Individual Debt Tracker */}
+                <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 className="text-lg font-bold text-slate-800 mb-6">Active Debt Tracker</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {debts?.map((debt: any) => {
+                            const balance = Number(debt.current_balance || 0);
+                            const apr = Number(debt.interest_rate || 0);
+                            const payment = Number(debt.min_payment || 0);
+                            const monthlyRate = (apr / 100) / 12;
+                            const monthlyInterest = balance * monthlyRate;
+
+                            totalDebtAmount += balance;
+
+                            let payoffMessage = "";
+                            if (balance <= 0) payoffMessage = "Paid! 🎉";
+                            else if (payment <= monthlyInterest) {
+                                payoffMessage = "Negative Amortization";
+                                globalWillNeverPayOff = true;
+                            } else {
+                                const m = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
+                                if (m > maxMonthsToPayoff) maxMonthsToPayoff = m;
+                                const d = new Date(); d.setMonth(d.getMonth() + Math.ceil(m));
+                                payoffMessage = `Est. Payoff: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+                            }
+
+                            return (
+                                <div key={debt.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <h3 className="font-extrabold text-slate-900">{debt.name}</h3>
+                                        <span className="font-black text-lg text-rose-600">${fmt(balance)}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4 text-[10px] font-bold text-slate-500 uppercase">
+                                        <div>APR: <span className="text-slate-900">{apr}%</span></div>
+                                        <div>Payment: <span className="text-slate-900">${fmt(payment)}</span></div>
+                                    </div>
+                                    <div className="text-xs font-bold text-slate-700 pt-2 border-t border-slate-200">
+                                        {payoffMessage}
+                                    </div>
+                                </div>
+                            )
+                        })}
                     </div>
-                    <div className="bg-slate-800 px-5 py-3 rounded-lg border border-slate-700 text-center md:text-right">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Freedom Date</h3>
-                        <p className={`text-xl font-bold ${willNeverPayOff ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {willNeverPayOff ? 'Payments too low' : freedomDate}
-                        </p>
+
+                    {/* Master Debt Summary (Inside the tracker) */}
+                    <div className="mt-8 bg-slate-900 rounded-xl p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div>
+                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Owed</span>
+                            <span className="text-3xl font-black text-rose-400">${fmt(totalDebtAmount)}</span>
+                        </div>
+                        <div className="text-center md:text-right">
+                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Household Freedom</span>
+                            <span className="text-xl font-bold text-emerald-400">
+                                {globalWillNeverPayOff ? 'Check Payments' : (totalDebtAmount > 0 ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(maxMonthsToPayoff)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Debt Free!')}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                {/* Budget Bars */}
+                {/* Monthly Budget Limits */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-                    <h2 className="text-lg font-bold text-slate-800 mb-8">Monthly Category Status</h2>
+                    <h2 className="text-lg font-bold text-slate-800 mb-8">Monthly Category Limits</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
                         {categories?.filter((c: any) => c.type === 'expense').map((cat: any) => {
                             const spent = expenseTotals[cat.name] || 0;
                             const limit = Number(cat.monthly_limit || 0);
-                            const percent = limit > 0 ? (spent / limit) * 100 : 0;
-                            const color = percent > 100 ? 'bg-rose-500' : 'bg-emerald-500';
+                            const perc = limit > 0 ? (spent / limit) * 100 : 0;
                             return (
                                 <div key={cat.id}>
-                                    <div className="flex justify-between items-baseline mb-1.5 gap-2">
-                                        <span className="font-bold text-slate-700 text-sm truncate">{cat.name}</span>
+                                    <div className="flex justify-between items-baseline mb-1.5">
+                                        <span className="font-bold text-slate-700 text-sm">{cat.name}</span>
                                         <span className="font-bold text-slate-900 text-xs">${fmt(spent)} / ${fmt(limit)}</span>
                                     </div>
                                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                        <div className={`${color} h-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }} />
+                                        <div className={`h-full ${perc > 100 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(perc, 100)}%` }} />
                                     </div>
                                 </div>
                             )
