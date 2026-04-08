@@ -15,5 +15,6 @@ export async function saveTransactionAction(amount: number, note: string, catego
     })
 
     revalidatePath('/dashboard/personal')
+    revalidatePath('/dashboard/transactions')
     return { success: true }
 }

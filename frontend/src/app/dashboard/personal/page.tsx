@@ -1,168 +1,148 @@
 import { createClient } from '@/lib/supabase'
 import TransactionForm from '@/components/TransactionForm'
 import SpendingChart from '@/components/SpendingChart'
+import MonthPicker from '@/components/MonthPicker'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PersonalDashboard() {
+export default async function PersonalDashboard({ searchParams }: { searchParams: any }) {
     const supabase = await createClient()
-
-    // NEW: Calculate the date range for the current month
+    const params = await searchParams
     const now = new Date()
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
 
-    // Fetch data
+    // 1. Resolve selected month
+    const selectedMonth = params.month ? new Date(params.month + "-02") : now
+    const year = selectedMonth.getFullYear()
+    const month = selectedMonth.getMonth()
+
+    const firstDay = new Date(year, month, 1).toISOString().split('T')[0]
+    const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0]
+
+    // 2. Fetch Data
     const { data: categories } = await supabase.from('categories').select('*').eq('workspace', 'personal').order('name')
 
-    // UPDATED: Added filters to only get transactions from the current month
-    const { data: transactions } = await supabase
-        .from('transactions')
-        .select(`id, amount, date, note, categories (name, type)`)
+    // This Month's Transactions
+    const { data: transactions } = await supabase.from('transactions')
+        .select(`amount, date, categories (name, type)`)
         .eq('workspace', 'personal')
-        .gte('date', firstDay)
-        .lte('date', lastDay)
-        .order('date', { ascending: false })
+        .gte('date', firstDay).lte('date', lastDay)
+
+    // All history prior to this month (for carry-over)
+    const { data: allPriorHistory } = await supabase.from('transactions')
+        .select(`amount, categories (type)`)
+        .eq('workspace', 'personal')
+        .lt('date', firstDay)
 
     const { data: buckets } = await supabase.from('savings_buckets').select('*').eq('workspace', 'personal').order('created_at')
     const { data: debts } = await supabase.from('debts').select('*').eq('workspace', 'personal').order('created_at')
 
-    // Calculate High-Level Totals & Category Spending
-    let totalIncome = 0;
-    let totalExpenses = 0;
-    const expenseTotals: Record<string, number> = {};
+    // 3. Calculate Carry Over Surplus
+    let carryOverSurplus = 0
+    allPriorHistory?.forEach(tx => {
+        if (tx.categories?.type === 'income') carryOverSurplus += Number(tx.amount)
+        else carryOverSurplus -= Number(tx.amount)
+    })
 
-    if (transactions) {
-        transactions.forEach((tx: any) => {
-            const type = tx.categories?.type
-            const amount = Number(tx.amount)
-            const catName = tx.categories?.name || 'Uncategorized'
+    // 4. Calculate This Month's Math
+    let thisMonthIncome = 0
+    let thisMonthExpenses = 0
+    const expenseTotals: Record<string, number> = {}
 
-            if (type === 'income') {
-                totalIncome += amount
-            } else if (type === 'expense') {
-                totalExpenses += amount
-                expenseTotals[catName] = (expenseTotals[catName] || 0) + amount;
+    transactions?.forEach((tx: any) => {
+        const amt = Number(tx.amount)
+        const catName = tx.categories?.name || 'Uncategorized'
+        if (tx.categories?.type === 'income') {
+            thisMonthIncome += amt
+        } else {
+            thisMonthExpenses += amt
+            expenseTotals[catName] = (expenseTotals[catName] || 0) + amt
+        }
+    })
+
+    const remainingToAllocate = (carryOverSurplus + thisMonthIncome) - thisMonthExpenses
+
+    // 5. Debt Freedom Logic
+    let totalDebt = 0; let maxMonthsToPayoff = 0; let willNeverPayOff = false;
+    debts?.forEach((debt: any) => {
+        const balance = Number(debt.current_balance || 0);
+        const apr = Number(debt.interest_rate || 0);
+        const payment = Number(debt.min_payment || 0);
+        totalDebt += balance;
+        if (balance > 0) {
+            const monthlyRate = (apr / 100) / 12;
+            if (payment <= (balance * monthlyRate)) willNeverPayOff = true;
+            else {
+                const months = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
+                if (months > maxMonthsToPayoff) maxMonthsToPayoff = months;
             }
-        })
-    }
+        }
+    });
 
-    // Calculate Aggregate Debt & Total Freedom Date
-    let totalDebt = 0;
-    let maxMonthsToPayoff = 0;
-    let willNeverPayOff = false;
+    const freedomDate = totalDebt > 0
+        ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(maxMonthsToPayoff)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : 'Debt Free! 🎉';
 
-    if (debts) {
-        debts.forEach((debt: any) => {
-            const balance = Number(debt.current_balance || 0);
-            const apr = Number(debt.interest_rate || 0);
-            const payment = Number(debt.min_payment || 0);
-
-            totalDebt += balance;
-
-            if (balance > 0) {
-                const monthlyRate = (apr / 100) / 12;
-                const thisMonthInterest = balance * monthlyRate;
-
-                if (payment <= thisMonthInterest) {
-                    willNeverPayOff = true;
-                } else {
-                    // Logarithmic formula for standard amortization schedule
-                    const monthsToPayoff = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-                    if (monthsToPayoff > maxMonthsToPayoff) {
-                        maxMonthsToPayoff = monthsToPayoff;
-                    }
-                }
-            }
-        });
-    }
-
-    let overallPayoffMessage = "";
-    if (totalDebt <= 0) {
-        overallPayoffMessage = "You are 100% Debt Free! 🎉";
-    } else if (willNeverPayOff) {
-        overallPayoffMessage = "Payments too low (Interest exceeds pay)";
-    } else {
-        const totalMonths = Math.ceil(maxMonthsToPayoff);
-        const d = new Date();
-        d.setMonth(d.getMonth() + totalMonths);
-        overallPayoffMessage = `${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
-
-    // Format data for the Donut Chart
-    const chartData = Object.entries(expenseTotals)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-    // Format money helper
-    const fmt = (num: number) => Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Format Helpers
+    const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const chartData = Object.entries(expenseTotals).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
     return (
-        <div className="bg-slate-100 font-sans min-h-screen pb-16">
+        <div className="bg-slate-100 font-sans min-h-screen pb-20">
             <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6 md:space-y-8">
 
-                {/* Header Area */}
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-200 mt-2 md:mt-0">
-                    <div className="flex-1 min-w-0">
-                        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 truncate">Household Ledger</h1>
-                        <p className="text-slate-500 font-medium mt-1 text-sm md:text-base">Zero-based wealth tracking.</p>
+                {/* Header */}
+                <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900">{selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
+                        <p className="text-slate-500 font-bold text-xs tracking-widest mt-1 uppercase">Wealth Ledger</p>
                     </div>
-                    <div className="flex gap-3 w-full md:w-auto">
-                        <div className="flex-1 md:flex-none">
-                            <TransactionForm categories={categories || []} />
-                        </div>
-                        <a href="/dashboard/settings" className="flex items-center justify-center bg-slate-100 text-slate-600 p-3 rounded-xl hover:bg-slate-200 transition border border-slate-200 shadow-sm shrink-0">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        </a>
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <MonthPicker currentMonth={firstDay.substring(0, 7)} />
+                        <TransactionForm categories={categories || []} />
                     </div>
                 </header>
 
                 {/* Top Level Metrics */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-emerald-500 flex flex-col items-center">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Income</h3>
-                        <p className="text-3xl md:text-3xl font-black text-slate-800 mt-1 break-words">${fmt(totalIncome)}</p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-slate-300">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Carried Forward</h3>
+                        <p className={`text-2xl font-black ${carryOverSurplus >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>${fmt(carryOverSurplus)}</p>
                     </div>
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-rose-500 flex flex-col items-center">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Expenses</h3>
-                        <p className="text-3xl md:text-3xl font-black text-slate-800 mt-1 break-words">${fmt(totalExpenses)}</p>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-emerald-500">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Month Income</h3>
+                        <p className="text-2xl font-black text-slate-800">${fmt(thisMonthIncome)}</p>
                     </div>
-                    <div className="bg-indigo-50 p-5 rounded-2xl shadow-sm border-b-4 border-indigo-500 flex flex-col items-center">
-                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Left to Allocate</h3>
-                        <p className="text-3xl md:text-3xl font-black text-indigo-700 mt-1 break-words">${fmt(totalIncome - totalExpenses)}</p>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-rose-500">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Month Expenses</h3>
+                        <p className="text-2xl font-black text-slate-800">${fmt(thisMonthExpenses)}</p>
+                    </div>
+                    <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg text-white">
+                        <h3 className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">Remaining To Allocate</h3>
+                        <p className="text-2xl font-black">${fmt(remainingToAllocate)}</p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-
-                    {/* Visual Spending Chart */}
-                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+                    {/* Spending Chart */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                         <h2 className="text-lg font-bold text-slate-800 mb-5">Spending Breakdown</h2>
-                        <div className="p-2">
-                            <SpendingChart data={chartData} />
-                        </div>
+                        <SpendingChart data={chartData} />
                     </div>
 
-                    {/* Target Savings Buckets */}
-                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 md:mb-8">
-                            <h2 className="text-lg font-bold text-slate-800">Savings Targets</h2>
-                            <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto">Custom Buckets</span>
-                        </div>
-
-                        <div className="space-y-6 md:space-y-7">
+                    {/* Savings Buckets */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h2 className="text-lg font-bold text-slate-800 mb-6">Savings Targets</h2>
+                        <div className="space-y-6">
                             {buckets?.map((bucket: any) => {
                                 const percent = bucket.target_amount > 0 ? Math.min((bucket.current_amount / bucket.target_amount) * 100, 100) : 0;
                                 return (
                                     <div key={bucket.id}>
                                         <div className="flex justify-between items-baseline mb-1.5 gap-2">
-                                            <span className="font-bold text-slate-700 text-sm md:text-base truncate">{bucket.name}</span>
-                                            <span className="font-bold text-slate-900 text-xs md:text-sm shrink-0">${fmt(bucket.current_amount)} <span className="text-slate-400 font-medium">/ ${fmt(bucket.target_amount)}</span></span>
+                                            <span className="font-bold text-slate-700 text-sm truncate">{bucket.name}</span>
+                                            <span className="font-bold text-slate-900 text-xs">${fmt(bucket.current_amount)} / ${fmt(bucket.target_amount)}</span>
                                         </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-3.5 border border-slate-200">
-                                            <div className="bg-amber-500 h-full rounded-full transition-all duration-500 relative" style={{ width: `${percent}%` }}>
-                                                <div className="absolute inset-0 bg-white opacity-20 rounded-full h-1 mt-0.5 mx-1"></div>
-                                            </div>
+                                        <div className="w-full bg-slate-100 rounded-full h-3 border border-slate-200 overflow-hidden">
+                                            <div className="bg-amber-500 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
                                         </div>
                                     </div>
                                 )
@@ -171,111 +151,37 @@ export default async function PersonalDashboard() {
                     </div>
                 </div>
 
-                {/* Active Debt Tracker with Overall Freedom Date Summary */}
-                <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 md:mb-8">
-                        <h2 className="text-lg font-bold text-slate-800">Active Debt Tracker</h2>
-                        <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto">Amortization Engine</span>
+                {/* Master Debt Box */}
+                <div className="bg-slate-900 p-6 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div>
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Household Debt</h3>
+                        <p className="text-4xl font-black text-rose-400">${fmt(totalDebt)}</p>
                     </div>
-
-                    {/* TOTAL DEBT & FREEDOM DATE SUMMARY BOX */}
-                    {totalDebt > 0 && (
-                        <div className="bg-slate-900 rounded-xl p-5 mb-8 text-white flex flex-col md:flex-row justify-between items-center gap-4 shadow-md">
-                            <div className="text-center md:text-left">
-                                <span className="block text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1">Total Household Debt</span>
-                                <span className="text-3xl md:text-4xl font-black text-rose-400">${fmt(totalDebt)}</span>
-                            </div>
-                            <div className="bg-slate-800 px-5 py-3 rounded-lg text-center md:text-right border border-slate-700 w-full md:w-auto">
-                                <span className="block text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1">Total Debt Freedom</span>
-                                <span className={`text-lg md:text-xl font-bold ${willNeverPayOff ? 'text-rose-400' : 'text-emerald-400'}`}>{overallPayoffMessage}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {debts?.map((debt: any) => {
-                            const balance = Number(debt.current_balance || 0);
-                            const apr = Number(debt.interest_rate || 0);
-                            const payment = Number(debt.min_payment || 0);
-
-                            // Monthly Math
-                            const monthlyRate = (apr / 100) / 12;
-                            const thisMonthInterest = balance * monthlyRate;
-
-                            // Payoff Date Math
-                            let payoffMessage = "";
-                            let statusColor = "text-rose-600 bg-rose-50 border-rose-200";
-
-                            if (balance <= 0) {
-                                payoffMessage = "Paid in full! 🎉";
-                                statusColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-                            } else if (payment <= thisMonthInterest) {
-                                payoffMessage = "Payment doesn't cover interest! Will never pay off.";
-                            } else {
-                                const monthsToPayoff = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-                                const totalMonths = Math.ceil(monthsToPayoff);
-                                const d = new Date();
-                                d.setMonth(d.getMonth() + totalMonths);
-                                payoffMessage = `Est. Payoff: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-                            }
-
-                            return (
-                                <div key={debt.id} className={`p-4 rounded-xl border ${statusColor} space-y-3`}>
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="font-extrabold text-lg text-slate-900">{debt.name}</h3>
-                                        <span className="font-black text-xl text-slate-900">${fmt(balance)}</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
-                                        <div>
-                                            <span className="block text-[10px] uppercase font-bold text-slate-500">APR</span>
-                                            <span className="font-bold text-slate-800">{apr}%</span>
-                                        </div>
-                                        <div>
-                                            <span className="block text-[10px] uppercase font-bold text-slate-500">Monthly Payment</span>
-                                            <span className="font-bold text-slate-800">${fmt(payment)}</span>
-                                        </div>
-                                        <div>
-                                            <span className="block text-[10px] uppercase font-bold text-rose-500">Interest This Month</span>
-                                            <span className="font-bold text-rose-700">${fmt(thisMonthInterest)}</span>
-                                        </div>
-                                        <div>
-                                            <span className="block text-[10px] uppercase font-bold text-slate-500">Principal Paid</span>
-                                            <span className="font-bold text-emerald-600">${fmt(Math.max(payment - thisMonthInterest, 0))}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="pt-2">
-                                        <span className="block text-sm font-bold opacity-90">{payoffMessage}</span>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                        {(!debts || debts.length === 0) && (
-                            <div className="col-span-1 md:col-span-2 text-center py-6 text-slate-400 font-medium">No debts tracked. You're completely debt free!</div>
-                        )}
+                    <div className="bg-slate-800 px-5 py-3 rounded-lg border border-slate-700 text-center md:text-right">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Freedom Date</h3>
+                        <p className={`text-xl font-bold ${willNeverPayOff ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {willNeverPayOff ? 'Payments too low' : freedomDate}
+                        </p>
                     </div>
                 </div>
 
-                {/* Zero-Based Category Limits */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 md:p-8">
-                    <h2 className="text-lg font-bold text-slate-800 mb-6 md:mb-8">Monthly Category Limits</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-7 md:gap-y-8">
-                        {categories?.filter((c: any) => c.type === 'expense').map((category: any) => {
-                            const limit = Number(category.monthly_limit || 0);
-                            const spent = expenseTotals[category.name] || 0;
-                            const percent = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
-
-                            const barColor = percent > 95 ? 'bg-rose-500' : percent > 80 ? 'bg-amber-500' : 'bg-emerald-500';
-
+                {/* Budget Bars */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+                    <h2 className="text-lg font-bold text-slate-800 mb-8">Monthly Category Status</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+                        {categories?.filter((c: any) => c.type === 'expense').map((cat: any) => {
+                            const spent = expenseTotals[cat.name] || 0;
+                            const limit = Number(cat.monthly_limit || 0);
+                            const percent = limit > 0 ? (spent / limit) * 100 : 0;
+                            const color = percent > 100 ? 'bg-rose-500' : 'bg-emerald-500';
                             return (
-                                <div key={category.id}>
+                                <div key={cat.id}>
                                     <div className="flex justify-between items-baseline mb-1.5 gap-2">
-                                        <span className="font-bold text-slate-700 text-sm md:text-base truncate">{category.name}</span>
-                                        <span className="font-bold text-slate-900 text-xs md:text-sm shrink-0">${fmt(spent)} <span className="text-slate-400 font-medium">/ ${fmt(limit)}</span></span>
+                                        <span className="font-bold text-slate-700 text-sm truncate">{cat.name}</span>
+                                        <span className="font-bold text-slate-900 text-xs">${fmt(spent)} / ${fmt(limit)}</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 rounded-full h-3 border border-slate-200">
-                                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${percent}%` }}></div>
+                                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                        <div className={`${color} h-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }} />
                                     </div>
                                 </div>
                             )
