@@ -7,9 +7,23 @@ export const dynamic = 'force-dynamic'
 export default async function PersonalDashboard() {
     const supabase = await createClient()
 
+    // NEW: Calculate the date range for the current month
+    const now = new Date()
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+
     // Fetch data
     const { data: categories } = await supabase.from('categories').select('*').eq('workspace', 'personal').order('name')
-    const { data: transactions } = await supabase.from('transactions').select(`id, amount, date, note, categories (name, type)`).eq('workspace', 'personal').order('date', { ascending: false })
+
+    // UPDATED: Added filters to only get transactions from the current month
+    const { data: transactions } = await supabase
+        .from('transactions')
+        .select(`id, amount, date, note, categories (name, type)`)
+        .eq('workspace', 'personal')
+        .gte('date', firstDay)
+        .lte('date', lastDay)
+        .order('date', { ascending: false })
+
     const { data: buckets } = await supabase.from('savings_buckets').select('*').eq('workspace', 'personal').order('created_at')
     const { data: debts } = await supabase.from('debts').select('*').eq('workspace', 'personal').order('created_at')
 
