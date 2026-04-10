@@ -3,6 +3,7 @@ import TransactionForm from '@/components/TransactionForm'
 import SpendingChart from '@/components/SpendingChart'
 import TrendChart from '@/components/TrendChart'
 import MonthPicker from '@/components/MonthPicker'
+import DebtTracker from '@/components/DebtTracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,9 +96,6 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
     });
     const trendData = Object.values(trendMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-    // Debt Math
-    let totalDebtAmount = 0; let maxMonthsToPayoff = 0; let globalWillNeverPayOff = false;
-
     // Format Helpers & Palettes
     const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const chartData = Object.entries(expenseTotals).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -109,14 +107,15 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
     ];
 
     return (
-        < div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 font-sans min-h-screen pb-20" >
+        <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 font-sans min-h-screen pb-20">
             <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6 md:space-y-8">
 
                 {/* Header */}
-                <header className="relative z-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/50">                    <div>
-                    <h1 className="text-2xl font-black text-slate-800">{selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
-                    <p className="text-indigo-400 font-bold text-xs tracking-widest mt-1 uppercase">Wealth Ledger</p>
-                </div>
+                <header className="relative z-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/50">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800">{selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
+                        <p className="text-indigo-400 font-bold text-xs tracking-widest mt-1 uppercase">Wealth Ledger</p>
+                    </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <MonthPicker currentMonth={firstDay.substring(0, 7)} />
                         <TransactionForm categories={categories || []} />
@@ -205,65 +204,10 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
                     </div>
                 </div>
 
-                {/* Individual Debt Tracker */}
-                <div className="bg-white/90 backdrop-blur-sm p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100">
-                    <h2 className="text-lg font-bold text-slate-800 mb-6">Active Debt Tracker</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {debts?.map((debt: any) => {
-                            const balance = Number(debt.current_balance || 0);
-                            const apr = Number(debt.interest_rate || 0);
-                            const payment = Number(debt.min_payment || 0);
-                            const monthlyRate = (apr / 100) / 12;
-                            const monthlyInterest = balance * monthlyRate;
-
-                            totalDebtAmount += balance;
-
-                            let payoffMessage = "";
-                            if (balance <= 0) payoffMessage = "Paid! 🎉";
-                            else if (payment <= monthlyInterest) {
-                                payoffMessage = "Negative Amortization";
-                                globalWillNeverPayOff = true;
-                            } else {
-                                const m = -Math.log(1 - (balance * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-                                if (m > maxMonthsToPayoff) maxMonthsToPayoff = m;
-                                const d = new Date(); d.setMonth(d.getMonth() + Math.ceil(m));
-                                payoffMessage = `Est. Payoff: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-                            }
-
-                            return (
-                                <div key={debt.id} className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="font-extrabold text-slate-900">{debt.name}</h3>
-                                        <span className="font-black text-lg text-rose-500">${fmt(balance)}</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 text-[10px] font-bold text-slate-500 uppercase">
-                                        <div>APR: <span className="text-slate-900">{apr}%</span></div>
-                                        <div>Payment: <span className="text-slate-900">${fmt(payment)}</span></div>
-                                    </div>
-                                    <div className="text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">
-                                        {payoffMessage}
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-
-                    {/* Master Debt Summary */}
-                    <div className="mt-8 bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4 shadow-md">
-                        <div>
-                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Owed</span>
-                            <span className="text-3xl font-black text-rose-400">${fmt(totalDebtAmount)}</span>
-                        </div>
-                        <div className="text-center md:text-right">
-                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Household Freedom</span>
-                            <span className="text-xl font-bold text-emerald-400">
-                                {globalWillNeverPayOff ? 'Check Payments' : (totalDebtAmount > 0 ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(maxMonthsToPayoff)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Debt Free!')}
-                            </span>
-                        </div>
-                    </div>
-                </div>
+                {/* Individual Debt Tracker Component */}
+                <DebtTracker debts={debts || []} />
 
             </div>
-        </div >
+        </div>
     )
 }
