@@ -113,11 +113,10 @@ export default async function PersonalDashboard({ searchParams }: { searchParams
             <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6 md:space-y-8">
 
                 {/* Header */}
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/50">
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-800">{selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
-                        <p className="text-indigo-400 font-bold text-xs tracking-widest mt-1 uppercase">Wealth Ledger</p>
-                    </div>
+                <header className="relative z-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/50">                    <div>
+                    <h1 className="text-2xl font-black text-slate-800">{selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h1>
+                    <p className="text-indigo-400 font-bold text-xs tracking-widest mt-1 uppercase">Wealth Ledger</p>
+                </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <MonthPicker currentMonth={firstDay.substring(0, 7)} />
                         <TransactionForm categories={categories || []} />
