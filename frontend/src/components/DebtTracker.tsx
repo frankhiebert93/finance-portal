@@ -51,6 +51,7 @@ export default function DebtTracker({ debts }: { debts: any[] }) {
           const originalAmount = Number(debt.original_amount || 0);
           const balance = Number(debt.current_balance || 0);
           const apr = Number(debt.interest_rate || 0);
+          const term = Number(debt.term_months || 0);
           const payment = Number(debt.min_payment || 0);
           const currency = String(debt.currency || 'MXN').trim().toUpperCase();
           const frequency = debt.payment_frequency || 'monthly';
@@ -104,8 +105,9 @@ export default function DebtTracker({ debts }: { debts: any[] }) {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4 text-[10px] font-bold text-slate-500 uppercase mb-3">
+                <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-500 uppercase mb-3">
                   <div>APR: <span className="text-slate-900">{apr}%</span></div>
+                  <div>Term: <span className="text-slate-900">{term > 0 ? `${term} mo` : 'Open'}</span></div>
                   <div>Pay: <span className="text-slate-900">${fmt(payment)} <span className="text-[8px] opacity-60">({frequency})</span></span></div>
                 </div>
 
