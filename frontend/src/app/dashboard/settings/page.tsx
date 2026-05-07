@@ -7,6 +7,14 @@ export const dynamic = 'force-dynamic'
 const parseNum = (val: FormDataEntryValue | null) => Number(String(val).replace(/,/g, ''));
 const fmt = (num: any) => Number(num || 0).toLocaleString('en-US');
 
+// Standard Banking Amortization Formula
+const calculatePayment = (principal: number, apr: number, months: number) => {
+    if (months <= 0) return 0;
+    if (apr <= 0) return principal / months; // 0% interest loan
+    const r = (apr / 100) / 12;
+    return principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+};
+
 export default async function SettingsPage() {
     const supabase = await createClient()
 
@@ -50,12 +58,22 @@ export default async function SettingsPage() {
     async function addDebt(formData: FormData) {
         'use server'
         const supabase = await createClient()
+        
+        const originalAmount = parseNum(formData.get('original'))
+        const apr = parseNum(formData.get('rate'))
+        const term = parseNum(formData.get('term'))
+        const customPay = parseNum(formData.get('payment'))
+        
+        // Auto-calculate the exact payment if a term is provided!
+        const finalPayment = term > 0 ? calculatePayment(originalAmount, apr, term) : customPay;
+
         await supabase.from('debts').insert({
             name: formData.get('name') as string,
-            original_amount: parseNum(formData.get('original')),
+            original_amount: originalAmount,
             current_balance: parseNum(formData.get('balance')),
-            interest_rate: parseNum(formData.get('rate')),
-            min_payment: parseNum(formData.get('payment')),
+            interest_rate: apr,
+            term_months: term,
+            min_payment: finalPayment,
             payment_frequency: formData.get('frequency') as string || 'monthly',
             currency: formData.get('currency') as string || 'MXN',
             workspace: 'personal'
@@ -69,12 +87,21 @@ export default async function SettingsPage() {
         const supabase = await createClient()
         const id = formData.get('id') as string
         const name = formData.get('name') as string
+        
+        const originalAmount = parseNum(formData.get('original'))
+        const apr = parseNum(formData.get('rate'))
+        const term = parseNum(formData.get('term'))
+        const customPay = parseNum(formData.get('payment'))
+        
+        const finalPayment = term > 0 ? calculatePayment(originalAmount, apr, term) : customPay;
+
         await supabase.from('debts').update({
             name,
-            original_amount: parseNum(formData.get('original')),
+            original_amount: originalAmount,
             current_balance: parseNum(formData.get('balance')),
-            interest_rate: parseNum(formData.get('rate')),
-            min_payment: parseNum(formData.get('payment')),
+            interest_rate: apr,
+            term_months: term,
+            min_payment: finalPayment,
             payment_frequency: formData.get('frequency') as string || 'monthly',
             currency: formData.get('currency') as string || 'MXN'
         }).eq('id', id)
@@ -108,7 +135,7 @@ export default async function SettingsPage() {
                                 <button type="submit" className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-200 transition text-sm">Save</button>
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Orig. Amount ($)</label>
                                     <input type="text" inputMode="decimal" name="original" defaultValue={fmt(debt.original_amount)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
@@ -122,17 +149,21 @@ export default async function SettingsPage() {
                                     <input type="text" inputMode="decimal" name="rate" defaultValue={fmt(debt.interest_rate)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Payment ($)</label>
-                                    <input type="text" inputMode="decimal" name="payment" defaultValue={fmt(debt.min_payment)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Term (Months)</label>
+                                    <input type="text" inputMode="decimal" name="term" defaultValue={debt.term_months || ''} placeholder="0 for Open" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Custom Pay ($)</label>
+                                    <input type="text" inputMode="decimal" name="payment" defaultValue={fmt(debt.min_payment)} placeholder="If Term is 0" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Frequency</label>
                                     <select name="frequency" defaultValue={debt.payment_frequency || 'monthly'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none text-sm">
                                         <option value="monthly">Monthly</option>
-                                        <option value="bi-weekly">Bi-Weekly (2x/mo)</option>
+                                        <option value="bi-weekly">Bi-Weekly</option>
                                     </select>
                                 </div>
-                                <div>
+                                <div className="md:col-span-2">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Currency</label>
                                     <select name="currency" defaultValue={debt.currency || 'MXN'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none text-sm">
                                         <option value="MXN">MXN</option>
@@ -146,21 +177,23 @@ export default async function SettingsPage() {
 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <h3 className="text-sm font-bold text-slate-700 mb-3">Add New Debt</h3>
-                    <form action={addDebt} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                    <form action={addDebt} className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <input type="text" name="name" placeholder="Debt Name" required className="md:col-span-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
                         <input type="text" inputMode="decimal" name="original" placeholder="Original ($)" required className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
                         <input type="text" inputMode="decimal" name="balance" placeholder="Balance ($)" required className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
                         <input type="text" inputMode="decimal" name="rate" placeholder="APR (%)" required className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
-                        <input type="text" inputMode="decimal" name="payment" placeholder="Pay ($)" required className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
-                        <select name="frequency" defaultValue="monthly" className="md:col-span-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none">
+                        <input type="text" inputMode="decimal" name="term" placeholder="Term (Months)" className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
+                        <input type="text" inputMode="decimal" name="payment" placeholder="OR Custom Pay ($)" className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none" />
+                        
+                        <select name="frequency" defaultValue="monthly" className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none">
                             <option value="monthly">Monthly</option>
-                            <option value="bi-weekly">Bi-Weekly (2x/mo)</option>
+                            <option value="bi-weekly">Bi-Weekly</option>
                         </select>
                         <select name="currency" defaultValue="MXN" className="md:col-span-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:ring-2 focus:ring-rose-500 outline-none">
                             <option value="MXN">MXN</option>
                             <option value="USD">USD</option>
                         </select>
-                        <button type="submit" className="md:col-span-6 bg-rose-100 text-rose-700 px-4 py-2 rounded-lg font-bold hover:bg-rose-200 transition">Add Debt</button>
+                        <button type="submit" className="md:col-span-4 bg-rose-100 text-rose-700 px-4 py-2 rounded-lg font-bold hover:bg-rose-200 transition">Add Debt</button>
                     </form>
                 </div>
             </div>
