@@ -9,8 +9,13 @@ backend/venv/
 backend/__pycache__/
 *.pyc
 
-# Security - CRITICAL!
+# Security - CRITICAL! Never commit real secrets.
 .env
 .env.local
+.env.*.local
 backend/.env
+frontend/.env
 frontend/.env.local
+# (.env.example is intentionally committed as a template)
+!.env.example
+!frontend/.env.example

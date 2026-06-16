@@ -1,34 +1,31 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import 'server-only'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
-// 1. Add "async" here
-export async function createClient() {
-    // 2. Add "await" here
-    const cookieStore = await cookies()
+// SECURITY MODEL
+// --------------
+// This app has no Supabase Auth users — the PIN (see proxy.ts / actions/auth.ts)
+// is the only authentication, enforced server-side. So we connect with the
+// service-role key and rely on Row Level Security being ENABLED with no policies
+// for the anon/authenticated roles (see ../../../supabase/migrations). That means:
+//
+//   * The database denies all access to the public anon key.
+//   * Legitimate access happens only here, in server code, behind the PIN gate.
+//   * The service-role key bypasses RLS but is never sent to the browser.
+//
+// The `server-only` import above makes the build fail if this module is ever
+// imported into a Client Component, guaranteeing the key cannot leak to the client.
+export function createClient() {
+    const supabaseUrl = process.env.SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY
 
-    return createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                get(name: string) {
-                    return cookieStore.get(name)?.value
-                },
-                set(name: string, value: string, options: CookieOptions) {
-                    try {
-                        cookieStore.set({ name, value, ...options })
-                    } catch (error) {
-                        // Ignored in server components
-                    }
-                },
-                remove(name: string, options: CookieOptions) {
-                    try {
-                        cookieStore.set({ name, value: '', ...options })
-                    } catch (error) {
-                        // Ignored in server components
-                    }
-                },
-            },
-        }
-    )
+    if (!supabaseUrl || !serviceKey) {
+        throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variable.')
+    }
+
+    return createSupabaseClient(supabaseUrl, serviceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+        },
+    })
 }

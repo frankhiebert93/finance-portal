@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
+import { parseAmount, parseString, parseEnum, parseId } from '@/lib/validate'
 
 export const dynamic = 'force-dynamic'
 
-const parseNum = (val: FormDataEntryValue | null) => Number(String(val).replace(/,/g, ''));
+const parseNum = (val: FormDataEntryValue | null) => parseAmount(val, { min: 0, field: 'amount' });
 const fmt = (num: any) => Number(num || 0).toLocaleString('en-US');
 
 // Standard Banking Amortization Formula
@@ -25,9 +26,9 @@ export default async function SettingsPage() {
     async function updateCategory(formData: FormData) {
         'use server'
         const supabase = await createClient()
-        const id = formData.get('id') as string
-        const name = formData.get('name') as string
-        await supabase.from('categories').update({ name, monthly_limit: parseNum(formData.get('limit')) }).eq('id', id)
+        const id = parseId(formData.get('id'), 'category')
+        const name = parseString(formData.get('name'), { maxLength: 60, required: true, field: 'name' })
+        await supabase.from('categories').update({ name, monthly_limit: parseNum(formData.get('limit')) }).eq('id', id).eq('workspace', 'personal')
         revalidatePath('/dashboard/settings')
         revalidatePath('/dashboard/personal')
     }
@@ -35,7 +36,7 @@ export default async function SettingsPage() {
     async function addCategory(formData: FormData) {
         'use server'
         const supabase = await createClient()
-        const name = formData.get('name') as string
+        const name = parseString(formData.get('name'), { maxLength: 60, required: true, field: 'name' })
         await supabase.from('categories').insert({ name, type: 'expense', workspace: 'personal', monthly_limit: 0 })
         revalidatePath('/dashboard/settings')
         revalidatePath('/dashboard/personal')
@@ -44,13 +45,13 @@ export default async function SettingsPage() {
     async function updateBucket(formData: FormData) {
         'use server'
         const supabase = await createClient()
-        const id = formData.get('id') as string
-        const name = formData.get('name') as string
+        const id = parseId(formData.get('id'), 'bucket')
+        const name = parseString(formData.get('name'), { maxLength: 60, required: true, field: 'name' })
         await supabase.from('savings_buckets').update({
             name,
             target_amount: parseNum(formData.get('target')),
             current_amount: parseNum(formData.get('current'))
-        }).eq('id', id)
+        }).eq('id', id).eq('workspace', 'personal')
         revalidatePath('/dashboard/settings')
         revalidatePath('/dashboard/personal')
     }
@@ -68,14 +69,14 @@ export default async function SettingsPage() {
         const finalPayment = term > 0 ? calculatePayment(originalAmount, apr, term) : customPay;
 
         await supabase.from('debts').insert({
-            name: formData.get('name') as string,
+            name: parseString(formData.get('name'), { maxLength: 60, required: true, field: 'name' }),
             original_amount: originalAmount,
             current_balance: parseNum(formData.get('balance')),
             interest_rate: apr,
             term_months: term,
             min_payment: finalPayment,
-            payment_frequency: formData.get('frequency') as string || 'monthly',
-            currency: formData.get('currency') as string || 'MXN',
+            payment_frequency: parseEnum(formData.get('frequency') || 'monthly', ['monthly', 'bi-weekly'] as const, 'frequency'),
+            currency: parseEnum(formData.get('currency') || 'MXN', ['MXN', 'USD'] as const, 'currency'),
             workspace: 'personal'
         })
         revalidatePath('/dashboard/settings')
@@ -85,14 +86,14 @@ export default async function SettingsPage() {
     async function updateDebt(formData: FormData) {
         'use server'
         const supabase = await createClient()
-        const id = formData.get('id') as string
-        const name = formData.get('name') as string
-        
+        const id = parseId(formData.get('id'), 'debt')
+        const name = parseString(formData.get('name'), { maxLength: 60, required: true, field: 'name' })
+
         const originalAmount = parseNum(formData.get('original'))
         const apr = parseNum(formData.get('rate'))
         const term = parseNum(formData.get('term'))
         const customPay = parseNum(formData.get('payment'))
-        
+
         const finalPayment = term > 0 ? calculatePayment(originalAmount, apr, term) : customPay;
 
         await supabase.from('debts').update({
@@ -102,9 +103,9 @@ export default async function SettingsPage() {
             interest_rate: apr,
             term_months: term,
             min_payment: finalPayment,
-            payment_frequency: formData.get('frequency') as string || 'monthly',
-            currency: formData.get('currency') as string || 'MXN'
-        }).eq('id', id)
+            payment_frequency: parseEnum(formData.get('frequency') || 'monthly', ['monthly', 'bi-weekly'] as const, 'frequency'),
+            currency: parseEnum(formData.get('currency') || 'MXN', ['MXN', 'USD'] as const, 'currency')
+        }).eq('id', id).eq('workspace', 'personal')
         revalidatePath('/dashboard/settings')
         revalidatePath('/dashboard/personal')
     }

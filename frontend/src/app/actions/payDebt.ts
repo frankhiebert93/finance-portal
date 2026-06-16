@@ -2,19 +2,39 @@
 
 import { createClient } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
+import { parseAmount, parseId, ValidationError } from '@/lib/validate'
 
 export async function payDebtAction(debtId: string, currentBalance: number, amount: number) {
-    const supabase = await createClient()
+    try {
+        const id = parseId(debtId, 'debt')
+        const payment = parseAmount(amount, { min: 0, field: 'payment' })
 
-    // Deduct the payment, preventing the balance from dropping below zero
-    const newBalance = Math.max(0, currentBalance - amount)
+        const supabase = await createClient()
 
-    await supabase.from('debts').update({
-        current_balance: newBalance
-    }).eq('id', debtId)
+        // Read the authoritative balance from the DB rather than trusting the
+        // client-supplied currentBalance, then deduct (never below zero).
+        const { data: debt, error: readError } = await supabase
+            .from('debts')
+            .select('current_balance')
+            .eq('id', id)
+            .eq('workspace', 'personal')
+            .single()
+        if (readError || !debt) throw new Error('Debt not found.')
 
-    // Instantly refresh the dashboard and settings
-    revalidatePath('/dashboard/personal')
-    revalidatePath('/dashboard/settings')
-    return { success: true }
+        const newBalance = Math.max(0, Number(debt.current_balance || 0) - payment)
+
+        const { error } = await supabase
+            .from('debts')
+            .update({ current_balance: newBalance })
+            .eq('id', id)
+            .eq('workspace', 'personal')
+        if (error) throw new Error(error.message)
+
+        revalidatePath('/dashboard/personal')
+        revalidatePath('/dashboard/settings')
+        return { success: true }
+    } catch (err) {
+        const message = err instanceof ValidationError ? err.message : 'Could not apply payment.'
+        return { success: false, error: message }
+    }
 }

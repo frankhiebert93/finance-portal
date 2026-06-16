@@ -6,21 +6,21 @@ import { unlockApp } from '@/app/actions/auth'
 
 export default function LockScreen() {
     const [pin, setPin] = useState('')
-    const [error, setError] = useState(false)
+    const [error, setError] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const router = useRouter()
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsLoading(true)
-        setError(false)
+        setError('')
 
         const result = await unlockApp(pin)
 
         if (result.success) {
             router.push('/dashboard/personal')
         } else {
-            setError(true)
+            setError(result.error || 'Incorrect PIN')
             setPin('')
             setIsLoading(false)
         }
@@ -53,7 +53,7 @@ export default function LockScreen() {
                             className={`w-full bg-slate-800 border ${error ? 'border-rose-500 text-rose-400' : 'border-slate-700 text-white'} rounded-xl px-4 py-4 text-center text-3xl font-black tracking-[0.5em] focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-inner`}
                             placeholder="••••"
                         />
-                        {error && <p className="text-rose-400 text-xs font-bold text-center mt-3 uppercase tracking-wider">Incorrect PIN</p>}
+                        {error && <p className="text-rose-400 text-xs font-bold text-center mt-3 uppercase tracking-wider">{error}</p>}
                     </div>
 
                     <button

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
+import { parseId } from '@/lib/validate'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,9 +18,9 @@ export default async function TransactionsPage() {
     // Inline Server Action to delete a mistake
     async function deleteTransaction(formData: FormData) {
         'use server'
-        const id = formData.get('id') as string
+        const id = parseId(formData.get('id'), 'transaction')
         const supabase = await createClient()
-        await supabase.from('transactions').delete().eq('id', id)
+        await supabase.from('transactions').delete().eq('id', id).eq('workspace', 'personal')
         revalidatePath('/dashboard/transactions')
         revalidatePath('/dashboard/personal')
     }
