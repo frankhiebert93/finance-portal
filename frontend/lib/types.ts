@@ -16,6 +16,7 @@ export interface Profile {
   full_name: string | null;
   base_currency: Currency;
   usd_mxn_rate: number;
+  monthly_income: number;
 }
 
 export interface Account {

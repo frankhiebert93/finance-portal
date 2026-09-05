@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState("");
   const [baseCur, setBaseCur] = useState<Currency>("MXN");
   const [rate, setRate] = useState("");
+  const [income, setIncome] = useState("");
   const [inited, setInited] = useState(false);
 
   const [pw, setPw] = useState("");
@@ -37,6 +38,7 @@ export default function SettingsPage() {
     setFullName(d.profile.full_name || "");
     setBaseCur(d.profile.base_currency);
     setRate(String(d.profile.usd_mxn_rate));
+    setIncome(String(d.profile.monthly_income ?? 0));
     setInited(true);
   }
 
@@ -46,12 +48,14 @@ export default function SettingsPage() {
     setProfileMsg(null);
     try {
       const r = parseFloat(rate);
+      const inc = parseFloat(income);
       const { error } = await d.supabase
         .from("profiles")
         .update({
           full_name: fullName.trim(),
           base_currency: baseCur,
           usd_mxn_rate: isNaN(r) || r <= 0 ? 18.5 : r,
+          monthly_income: isNaN(inc) || inc < 0 ? 0 : inc,
           updated_at: new Date().toISOString(),
         })
         .eq("id", d.profile!.id);
@@ -174,6 +178,21 @@ export default function SettingsPage() {
           <div className="field">
             <label>Full name</label>
             <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Planned monthly income ({baseCur})</label>
+            <input
+              className="input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={income}
+              onChange={(e) => setIncome(e.target.value)}
+              placeholder="0.00"
+            />
+            <span className="muted" style={{ fontSize: 12 }}>
+              Used on the Budgets page to show what's left to budget. Also editable there.
+            </span>
           </div>
           <div className="row">
             <div className="field">

@@ -78,6 +78,7 @@ export async function POST(request: Request) {
 
   const base: Cur = (profileR.data?.base_currency as Cur) || "MXN";
   const usdMxn = Number(profileR.data?.usd_mxn_rate) || 18.5;
+  const plannedIncome = Number(profileR.data?.monthly_income) || 0;
   const accounts = accountsR.data || [];
   const cats = catsR.data || [];
   const txns = txnsR.data || [];
@@ -129,8 +130,11 @@ export async function POST(request: Request) {
   lines.push(
     `Net worth: ${money(assets - liabilities, base)} (assets ${money(assets, base)}, liabilities ${money(liabilities, base)}).`
   );
+  if (plannedIncome > 0) {
+    lines.push(`Planned monthly income (set by Frank): ${money(plannedIncome, base)}.`);
+  }
   lines.push(
-    `Average monthly income (last ${months} mo): ${money(avgIncome, base)}. Average monthly spending: ${money(avgExpense, base)}. Average monthly surplus: ${money(avgIncome - avgExpense, base)}.`
+    `Average monthly income from logged transactions (last ${months} mo): ${money(avgIncome, base)}. Average monthly spending: ${money(avgExpense, base)}. Average monthly surplus: ${money(avgIncome - avgExpense, base)}.`
   );
   if (catAvg.length) {
     lines.push("Average monthly spending by category:");

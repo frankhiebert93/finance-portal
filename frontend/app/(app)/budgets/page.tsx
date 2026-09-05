@@ -10,6 +10,7 @@ export default function BudgetsPage() {
   const [month, setMonth] = useState(() => monthKey(new Date()).slice(0, 7));
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [incomeDraft, setIncomeDraft] = useState<string | null>(null);
 
   if (d.loading) return <Spinner />;
 
@@ -71,6 +72,18 @@ export default function BudgetsPage() {
   );
   const totalSpent = expenseCats.reduce((s, c) => s + (spent[c.id] || 0), 0);
   const uncatSpent = spent["uncat"] || 0;
+  const income = Number(d.profile?.monthly_income || 0);
+  const leftToBudget = income - totalBudget;
+
+  async function saveIncome(val: string) {
+    const n = parseFloat(val);
+    await d.supabase
+      .from("profiles")
+      .update({ monthly_income: isNaN(n) || n < 0 ? 0 : n })
+      .eq("id", d.profile!.id);
+    await d.reload();
+    setIncomeDraft(null);
+  }
 
   function shiftMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
@@ -103,25 +116,62 @@ export default function BudgetsPage() {
 
       <div className="grid stat-grid" style={{ marginBottom: 18 }}>
         <div className="card stat">
+          <div className="label">Monthly Income</div>
+          <input
+            className="input"
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              padding: "4px 8px",
+              marginTop: 6,
+              border: "1px dashed var(--border-strong)",
+              background: "var(--surface-2)",
+            }}
+            placeholder="0.00"
+            value={incomeDraft !== null ? incomeDraft : income ? String(income) : ""}
+            onChange={(e) => setIncomeDraft(e.target.value)}
+            onBlur={(e) => saveIncome(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+          />
+          <div className="sub">What you plan to bring in ({d.base}) · tap to edit</div>
+        </div>
+        <div className="card stat">
           <div className="label">Budgeted</div>
           <div className="value">{formatMoney(totalBudget, d.base)}</div>
-          <div className="sub">{monthLabel(monthStart)}</div>
+          <div className="sub">Assigned to categories</div>
+        </div>
+        <div className="card stat">
+          <div className="label">Left to Budget</div>
+          <div className={"value " + (leftToBudget < 0 ? "neg" : "pos")}>
+            {income > 0 ? formatMoney(leftToBudget, d.base) : "—"}
+          </div>
+          <div className="sub">
+            {income <= 0
+              ? "Set your income above"
+              : leftToBudget < 0
+              ? "Over-allocated — trim a category"
+              : leftToBudget === 0
+              ? "Every dollar has a job"
+              : "Unassigned income"}
+          </div>
         </div>
         <div className="card stat">
           <div className="label">Spent</div>
           <div className="value">{formatMoney(totalSpent, d.base)}</div>
           <div className="sub">
-            {totalBudget > 0
+            {income > 0
+              ? `${((totalSpent / income) * 100).toFixed(0)}% of income`
+              : totalBudget > 0
               ? `${((totalSpent / totalBudget) * 100).toFixed(0)}% of budget`
               : "No budget set"}
           </div>
-        </div>
-        <div className="card stat">
-          <div className="label">Remaining</div>
-          <div className={"value " + (totalBudget - totalSpent < 0 ? "neg" : "pos")}>
-            {formatMoney(totalBudget - totalSpent, d.base)}
-          </div>
-          <div className="sub">Budgeted minus spent</div>
         </div>
       </div>
 
