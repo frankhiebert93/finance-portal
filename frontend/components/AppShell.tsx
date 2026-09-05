@@ -27,6 +27,13 @@ const NAV = [
   { href: "/settings", label: "Settings", Icon: IconSettings },
 ];
 
+const BOTTOM = [
+  { href: "/dashboard", label: "Home", Icon: IconDashboard },
+  { href: "/accounts", label: "Accounts", Icon: IconWallet },
+  { href: "/transactions", label: "Ledger", Icon: IconList },
+  { href: "/debts", label: "Debts", Icon: IconDebt },
+];
+
 const TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/accounts": "Accounts",
@@ -116,6 +123,22 @@ export default function AppShell({
           <DataProvider>{children}</DataProvider>
         </main>
       </div>
+
+      <nav className="bottom-nav">
+        {BOTTOM.map(({ href, label, Icon }) => {
+          const active = pathname === href;
+          return (
+            <Link key={href} href={href} className={active ? "active" : ""}>
+              <Icon />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
+        <button type="button" onClick={() => setOpen(true)}>
+          <IconMenu />
+          <span>More</span>
+        </button>
+      </nav>
     </div>
   );
 }

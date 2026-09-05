@@ -771,3 +771,111 @@ table.tbl {
     padding: 0 16px;
   }
 }
+
+/* ---------- Mobile app: bottom tab bar + native-feel tweaks ---------- */
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    background: var(--sidebar);
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -4px 20px rgba(16, 22, 35, 0.18);
+  }
+  .bottom-nav a,
+  .bottom-nav button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 9px 2px 7px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #8a94a3;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-decoration: none;
+    min-height: 54px;
+  }
+  .bottom-nav .nav-ico {
+    width: 22px;
+    height: 22px;
+    color: #8a94a3;
+  }
+  .bottom-nav a.active {
+    color: #fff;
+  }
+  .bottom-nav a.active .nav-ico {
+    color: var(--accent);
+  }
+
+  /* leave room for the bar; pad for the notch up top */
+  .content {
+    padding: 16px 16px calc(84px + env(safe-area-inset-bottom));
+  }
+  .topbar {
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top);
+    height: calc(62px + env(safe-area-inset-top));
+  }
+  .sidebar {
+    padding-top: env(safe-area-inset-top);
+    width: 82vw;
+    max-width: 300px;
+  }
+
+  /* 16px controls so iOS Safari doesn't zoom the page on focus */
+  .input,
+  .select,
+  textarea.input {
+    font-size: 16px;
+    padding: 11px 12px;
+  }
+  .btn {
+    padding: 10px 15px;
+  }
+  .btn-sm {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* modals as reachable bottom sheets */
+  .modal-back {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: 100%;
+    border-radius: 18px 18px 0 0;
+    max-height: 92vh;
+  }
+  .modal-foot {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .tbl th,
+  .tbl td {
+    padding: 10px 10px;
+  }
+  .stat .value {
+    font-size: 23px;
+  }
+  /* stack the two-column content sections (dashboard, reports) on phones */
+  .grid:not(.stat-grid) {
+    grid-template-columns: 1fr !important;
+  }
+}
