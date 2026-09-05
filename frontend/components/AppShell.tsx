@@ -14,6 +14,7 @@ import {
   IconSettings,
   IconMenu,
   IconDebt,
+  IconSpark,
 } from "./icons";
 
 const NAV = [
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/budgets", label: "Budgets", Icon: IconBudget },
   { href: "/debts", label: "Debts", Icon: IconDebt },
   { href: "/goals", label: "Savings Goals", Icon: IconGoal },
+  { href: "/advisor", label: "AI Advisor", Icon: IconSpark },
   { href: "/reports", label: "Reports", Icon: IconReport },
   { href: "/settings", label: "Settings", Icon: IconSettings },
 ];
@@ -41,6 +43,7 @@ const TITLES: Record<string, string> = {
   "/budgets": "Budgets",
   "/debts": "Debts",
   "/goals": "Savings Goals",
+  "/advisor": "AI Advisor",
   "/reports": "Reports",
   "/settings": "Settings",
 };
