@@ -92,3 +92,44 @@ export const ACCOUNT_TYPES: { value: AccountType; label: string; liability?: boo
 ];
 
 export const LIABILITY_TYPES: AccountType[] = ["credit_card", "loan"];
+
+export type DebtKind =
+  | "credit_card"
+  | "auto_loan"
+  | "mortgage"
+  | "personal_loan"
+  | "student_loan"
+  | "medical"
+  | "line_of_credit"
+  | "other";
+
+export interface Debt {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: DebtKind;
+  currency: Currency;
+  balance: number;
+  apr: number;
+  min_payment: number;
+  extra_payment: number;
+  monthly_fee: number;
+  term_months: number | null;
+  opened_date: string | null;
+  due_day: number | null;
+  notes: string | null;
+  is_closed: boolean;
+  sort: number;
+  created_at: string;
+}
+
+export const DEBT_KINDS: { value: DebtKind; label: string }[] = [
+  { value: "credit_card", label: "Credit Card" },
+  { value: "auto_loan", label: "Auto Loan" },
+  { value: "mortgage", label: "Mortgage" },
+  { value: "personal_loan", label: "Personal Loan" },
+  { value: "student_loan", label: "Student Loan" },
+  { value: "line_of_credit", label: "Line of Credit" },
+  { value: "medical", label: "Medical" },
+  { value: "other", label: "Other" },
+];

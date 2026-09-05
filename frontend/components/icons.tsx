@@ -90,3 +90,11 @@ export const IconTrend = (p: any) => (
     <path d="M17 7h4v4" />
   </svg>
 );
+
+export const IconDebt = (p: any) => (
+  <svg {...base} className={"nav-ico " + (p.className || "")}>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M2.5 9.5h19" />
+    <path d="M6 14.5h4" />
+  </svg>
+);

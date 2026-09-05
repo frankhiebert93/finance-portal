@@ -16,6 +16,7 @@ import type {
   SavingsGoal,
   Transaction,
   Currency,
+  Debt,
 } from "@/lib/types";
 import { toBase } from "@/lib/format";
 
@@ -29,6 +30,7 @@ interface DataCtx {
   transactions: Transaction[];
   budgets: Budget[];
   goals: SavingsGoal[];
+  debts: Debt[];
   base: Currency;
   usdMxn: number;
   reload: () => Promise<void>;
@@ -58,11 +60,12 @@ export default function DataProvider({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
 
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const [p, a, c, t, b, g] = await Promise.all([
+      const [p, a, c, t, b, g, dbt] = await Promise.all([
         supabase.from("profiles").select("*").single(),
         supabase.from("accounts").select("*").order("sort").order("created_at"),
         supabase.from("categories").select("*").order("sort"),
@@ -73,6 +76,7 @@ export default function DataProvider({
           .order("created_at", { ascending: false }),
         supabase.from("budgets").select("*"),
         supabase.from("savings_goals").select("*").order("created_at"),
+        supabase.from("debts").select("*").order("sort").order("created_at"),
       ]);
       if (p.error && p.error.code !== "PGRST116") throw p.error;
       if (a.error) throw a.error;
@@ -80,12 +84,14 @@ export default function DataProvider({
       if (t.error) throw t.error;
       if (b.error) throw b.error;
       if (g.error) throw g.error;
+      if (dbt.error) throw dbt.error;
       setProfile(p.data as Profile);
       setAccounts((a.data as Account[]) || []);
       setCategories((c.data as Category[]) || []);
       setTransactions((t.data as Transaction[]) || []);
       setBudgets((b.data as Budget[]) || []);
       setGoals((g.data as SavingsGoal[]) || []);
+      setDebts((dbt.data as Debt[]) || []);
     } catch (e: any) {
       setError(e?.message || "Failed to load data.");
     } finally {
@@ -131,6 +137,7 @@ export default function DataProvider({
         transactions,
         budgets,
         goals,
+        debts,
         base,
         usdMxn,
         reload,
